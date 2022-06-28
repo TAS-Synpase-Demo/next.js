@@ -18,4 +18,5 @@ postMerge:
 postRun:
   command:
     - node --version
-version: 1.0.2
+version: 1.0.0
+parallelism: 2
