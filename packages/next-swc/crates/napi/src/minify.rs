@@ -33,7 +33,7 @@ use fxhash::FxHashMap;
 use napi::{CallContext, JsObject, Task};
 use serde::Deserialize;
 use std::sync::Arc;
-use swc::{try_with_handler, TransformOutput};
+use swc::{config::JsMinifyOptions, try_with_handler, TransformOutput};
 use swc_common::{errors::ColorConfig, sync::Lrc, FileName, SourceFile, SourceMap};
 
 struct MinifyTask {
@@ -85,14 +85,20 @@ impl Task for MinifyTask {
             |handler| {
                 let fm = self.code.to_file(self.c.cm.clone());
 
-                self.c.minify(fm, handler, &self.opts)
+                self.c.minify(
+                    fm,
+                    handler,
+                    &JsMinifyOptions {
+                        ..self.opts.clone()
+                    },
+                )
             },
         )
         .convert_err()
     }
 
     fn resolve(self, env: napi::Env, output: Self::Output) -> napi::Result<Self::JsValue> {
-        complete_output(&env, output)
+        complete_output(&env, output, Default::default())
     }
 }
 
@@ -127,5 +133,5 @@ pub fn minify_sync(cx: CallContext) -> napi::Result<JsObject> {
     )
     .convert_err()?;
 
-    complete_output(cx.env, output)
+    complete_output(cx.env, output, Default::default())
 }

@@ -1,4 +1,7 @@
-import type { webpack5 as webpack } from 'next/dist/compiled/webpack/webpack'
+import {
+  NormalModule,
+  webpack5 as webpack,
+} from 'next/dist/compiled/webpack/webpack'
 
 /**
  * List of target triples next-swc native binary supports.
@@ -20,6 +23,7 @@ export type SWC_TARGET_TRIPLE =
 
 export type Feature =
   | 'next/image'
+  | 'next/future/image'
   | 'next/script'
   | 'next/dynamic'
   | 'swcLoader'
@@ -56,6 +60,7 @@ interface Connection {
 // Map of a feature module to the file it belongs in the next package.
 const FEATURE_MODULE_MAP: ReadonlyMap<Feature, string> = new Map([
   ['next/image', '/next/image.js'],
+  ['next/future/image', '/next/future/image.js'],
   ['next/script', '/next/script.js'],
   ['next/dynamic', '/next/dynamic.js'],
 ])
@@ -85,6 +90,8 @@ const BUILD_FEATURES: Array<Feature> = [
   'swc/target/aarch64-unknown-linux-musl',
   'swc/target/aarch64-pc-windows-msvc',
 ]
+
+const ELIMINATED_PACKAGES = new Set<string>()
 
 /**
  * Plugin that queries the ModuleGraph to look for modules that correspond to
@@ -137,10 +144,22 @@ export class TelemetryPlugin implements webpack.WebpackPluginInstance {
         callback()
       }
     )
+    if (compiler.options.mode === 'production' && !compiler.watchMode) {
+      compiler.hooks.compilation.tap(TelemetryPlugin.name, (compilation) => {
+        const moduleHooks = NormalModule.getCompilationHooks(compilation)
+        moduleHooks.loader.tap(TelemetryPlugin.name, (loaderContext: any) => {
+          loaderContext.eliminatedPackages = ELIMINATED_PACKAGES
+        })
+      })
+    }
   }
 
   usages(): FeatureUsage[] {
     return [...this.usageTracker.values()]
+  }
+
+  packagesUsedInServerSideProps(): string[] {
+    return Array.from(ELIMINATED_PACKAGES)
   }
 }
 

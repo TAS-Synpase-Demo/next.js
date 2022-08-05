@@ -11,6 +11,7 @@ export interface ScriptProps extends ScriptHTMLAttributes<HTMLScriptElement> {
   strategy?: 'afterInteractive' | 'lazyOnload' | 'beforeInteractive' | 'worker'
   id?: string
   onLoad?: (e: any) => void
+  onReady?: () => void | null
   onError?: (e: any) => void
   children?: React.ReactNode
 }
@@ -22,6 +23,7 @@ export type Props = ScriptProps
 
 const ignoreProps = [
   'onLoad',
+  'onReady',
   'dangerouslySetInnerHTML',
   'children',
   'onError',
@@ -33,6 +35,7 @@ const loadScript = (props: ScriptProps): void => {
     src,
     id,
     onLoad = () => {},
+    onReady = null,
     dangerouslySetInnerHTML,
     children = '',
     strategy = 'afterInteractive',
@@ -61,6 +64,10 @@ const loadScript = (props: ScriptProps): void => {
       resolve()
       if (onLoad) {
         onLoad.call(this, e)
+      }
+      // Run onReady for the first time after load event
+      if (onReady) {
+        onReady()
       }
     })
     el.addEventListener('error', function (e) {
@@ -108,14 +115,14 @@ const loadScript = (props: ScriptProps): void => {
   document.body.appendChild(el)
 }
 
-function handleClientScriptLoad(props: ScriptProps) {
+export function handleClientScriptLoad(props: ScriptProps) {
   const { strategy = 'afterInteractive' } = props
-  if (strategy === 'afterInteractive') {
-    loadScript(props)
-  } else if (strategy === 'lazyOnload') {
+  if (strategy === 'lazyOnload') {
     window.addEventListener('load', () => {
       requestIdleCallback(() => loadScript(props))
     })
+  } else {
+    loadScript(props)
   }
 }
 
@@ -129,15 +136,28 @@ function loadLazyScript(props: ScriptProps) {
   }
 }
 
+function addBeforeInteractiveToCache() {
+  const scripts = [
+    ...document.querySelectorAll('[data-nscript="beforeInteractive"]'),
+    ...document.querySelectorAll('[data-nscript="beforePageRender"]'),
+  ]
+  scripts.forEach((script) => {
+    const cacheKey = script.id || script.getAttribute('src')
+    LoadCache.add(cacheKey)
+  })
+}
+
 export function initScriptLoader(scriptLoaderItems: ScriptProps[]) {
   scriptLoaderItems.forEach(handleClientScriptLoad)
+  addBeforeInteractiveToCache()
 }
 
 function Script(props: ScriptProps): JSX.Element | null {
   const {
+    id,
     src = '',
     onLoad = () => {},
-    dangerouslySetInnerHTML,
+    onReady = null,
     strategy = 'afterInteractive',
     onError,
     ...restProps
@@ -145,6 +165,15 @@ function Script(props: ScriptProps): JSX.Element | null {
 
   // Context is available only during SSR
   const { updateScripts, scripts, getIsSsr } = useContext(HeadManagerContext)
+
+  useEffect(() => {
+    const cacheKey = id || src
+
+    // Run onReady if script has loaded before but component is re-mounted
+    if (onReady && cacheKey && LoadCache.has(cacheKey)) {
+      onReady()
+    }
+  }, [onReady, id, src])
 
   useEffect(() => {
     if (strategy === 'afterInteractive') {
@@ -158,8 +187,10 @@ function Script(props: ScriptProps): JSX.Element | null {
     if (updateScripts) {
       scripts[strategy] = (scripts[strategy] || []).concat([
         {
+          id,
           src,
           onLoad,
+          onReady,
           onError,
           ...restProps,
         },
@@ -167,7 +198,7 @@ function Script(props: ScriptProps): JSX.Element | null {
       updateScripts(scripts)
     } else if (getIsSsr && getIsSsr()) {
       // Script has already loaded during SSR
-      LoadCache.add(restProps.id || src)
+      LoadCache.add(id || src)
     } else if (getIsSsr && !getIsSsr()) {
       loadScript(props)
     }

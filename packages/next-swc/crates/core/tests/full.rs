@@ -30,10 +30,11 @@ fn test(input: &Path, minify: bool) {
             let options = TransformOptions {
                 swc: swc::config::Options {
                     swcrc: true,
-                    is_module: swc::config::IsModule::Bool(true),
-                    output_path: Some(output.to_path_buf()),
+                    output_path: Some(output.clone()),
 
                     config: swc::config::Config {
+                        is_module: swc::config::IsModule::Bool(true),
+
                         jsc: swc::config::JscConfig {
                             minify: if minify {
                                 Some(assert_json("{ \"compress\": true, \"mangle\": true }"))
@@ -73,7 +74,13 @@ fn test(input: &Path, minify: bool) {
                 &handler,
                 &options.swc,
                 |_, comments| {
-                    custom_before_pass(cm.clone(), fm.clone(), &options, comments.clone())
+                    custom_before_pass(
+                        cm.clone(),
+                        fm.clone(),
+                        &options,
+                        comments.clone(),
+                        Default::default(),
+                    )
                 },
                 |_, _| noop(),
             ) {
